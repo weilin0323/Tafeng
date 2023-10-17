@@ -13,7 +13,7 @@
 <img width="670" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/ebbe7bc0-e596-436c-b5b1-ea28431edeae">
 
 ## 購物籃分析：
-<img width="918" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/5344a488-88fc-40ff-a02f-43d219030722">
+<img width="700" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/5344a488-88fc-40ff-a02f-43d219030722"><br/>
 因為希望提高毛利率高但銷售量少的商品的購買率，因此藉由購物籃分析法尋找商品間的關聯性，<br/>
 其中發現購買#560201可以提高#560336的購買率，而購買#501002可以提高#5601001的購買率，此組合可用在行銷策略上。<br/>
 
@@ -21,7 +21,7 @@
 針對不同客群預測購買機率與預期營收：<br/>
 <img width="610" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/44983f2b-6ccf-461f-88f5-78508bbc87b2">
 
-## 市場模擬：<br/>
+## 市場模擬：
 估計預期報償：<br/>
 <img width="560" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/1540c3b1-a983-4770-894a-097fd79a8efc">
 
