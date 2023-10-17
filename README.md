@@ -5,7 +5,7 @@
 
 ## 銷售狀況與客群分佈
 年齡與地理區隔的關聯性：<br/>
-<img width="583" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/e0954fb5-740e-419c-ace5-10602cd83f64">
+<img width="583" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/e0954fb5-740e-419c-ace5-10602cd83f64"><br/>
 顧客地理區隔特徵：<br/>
 <img width="670" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/3e672143-5b10-487e-8906-8a03c0c68cad">
 
@@ -32,7 +32,7 @@
 <img width="686" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/e5a81a0d-ef8e-4413-a48d-9065ce0f5048">
 
 另外，我們也可以透過行銷模擬工具來調整參數，找出最適合的行銷工具（可參考G10_FinalSimulate.rmd）<br/>
-<img width="824" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/666c18e8-2922-492c-8fb0-81bfd3b1960e">
+<img width="700" alt="" src="https://github.com/weilin0323/Tafeng/assets/51693471/666c18e8-2922-492c-8fb0-81bfd3b1960e">
 
 
 
