@@ -1,6 +1,6 @@
 ---
 title: "TF_資料探索期末報告"
-author: "G10_Final"
+author: "Final"
 date: "`r Sys.time()`"
 output:
   html_document:
