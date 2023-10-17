@@ -1,0 +1,490 @@
+---
+title: TF_資料探索報告
+author: G10_midterm
+date: "`r Sys.time()`"
+output:
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: ../etc/style.css
+---
+
+<br>
+```{r echo=T, message=F, cache=F, warning=F}
+rm(list=ls(all=TRUE))
+pacman::p_load(vcd, magrittr, readr, caTools, ggplot2, dplyr, plotly, ggrepel)
+load("data/tf0.rdata")
+sapply(list(cust=A0,tid=X0,items=Z0), nrow)
+```
+
+##### 每週交易次數圖表
+```{r}
+Z0$date = as.Date(Z0$date, format="%m/%d/%Y")
+hist(Z0$date,'weeks',freq=T,las=2)
+```
+<br> 
+主要發現：<br>
+
+● 主要發現一月銷售量相較於其他月份銷售量更突出，推估為過年買氣較旺，可根據此檔期做行銷策略專案。<br>
+● 從圖中可發現12月的第四周的交易量較少，可以推測該週可能是因為店內整修，有部分天數店休，導致交易量驟降。<br>
+
+### 年齡層級、郵遞區號
+```{r}
+ggplot(Z0) +geom_bar(aes(x = age, fill = age))
+```
+
+##### 各地區顧客分布
+```{r}
+options(scipen=999)#不要科學記號
+ggplot(Z0) +geom_bar(aes(x = area, fill = area))
+```
+我們得知Ta Feng量販店的會員集中在汐止區與南港區，因此推估商店舖座落在兩區之間。<br> 
+假設大豐超市位於南港區global mall商城內的國際商品生鮮超市，<br>  引進進口產品，提高高質量零食與生鮮蔬果商品。<br> 
+超市會員主要多為30-50歲青、壯年年齡居多，推估此年齡層有一定的基本經濟能力。<br> 
+
+##### 年齡與地理區隔的關聯性
+```{r fig.height=5, fig.width=6}
+MOSA = function(formula, data) mosaic(formula, data, shade=T, 
+  margins=c(0,1,0,0), labeling_args = list(rot_labels=c(90,0,0,0)),
+  gp_labels=gpar(fontsize=9), legend_args=list(fontsize=9),
+  gp_text=gpar(fontsize=7),labeling=labeling_residuals)
+
+MOSA(~area+age, A0)
+```
+<br><hr>
+主要發現：
+
+● 主要顧客來源為南港區及汐止區，信義區及內湖區為其次<br> 
+● 顧客中30~44歲的年齡層較多<br> 
+● 南港區較多25歲以下學生族群，較少30~40歲壯年客群<br> 
+● 汐止區30~40歲的顧客比率比較高<br> 
+
+
+<br><hr>
+##### 各區年齡層的消費時間
+```{r}
+X0$wday = format(X0$date, "%u")
+ht <- count(X0, age, wday)
+X0A <- merge(X0,ht)
+
+ggplot(X0A, aes(X0A$wday,X0A$age)) + 
+    geom_tile(aes(fill = n),colour = "white")
+    scale_fill_gradient(low = "white",high = "steelblue", limits = c(0, 6000))
+```
+假日的各年齡層購買力較平日強，尤其30~39歲族群最顯著<br>
+
+### 簡單泡泡圖
+
+##### 年齡區隔特徵
+```{r}
+A0 %>% group_by(age) %>% summarise(
+  Group.Size = n(),              # 族群人數
+  avg.Freq = mean(f),            # 平均購買次數
+  avg.Revenue = sum(f*m)/sum(f)  # 平均客單價
+  ) %>% 
+  ggplot(aes(y=avg.Freq, x=avg.Revenue)) +
+  geom_point(aes(col=age, size=Group.Size), alpha=0.5) +
+  geom_text(aes(label=age)) +
+  scale_size(range=c(5,25)) +
+  theme_bw() + theme(legend.position="none") +
+  ggtitle("年齡區隔特徵 (泡泡大小:族群人數)") + 
+  ylab("平均購買次數") + xlab("平均客單價")
+```
+
+```{r}
+mean(A0$age == "a99")
+```
+
+由於`a99`(沒有年齡資料的顧客)人數不多，而且特徵很獨特，探索時我們可以考慮濾掉這群顧客
+```{r}
+A0 %>% filter(age!="a99") %>%    # 濾掉沒有年齡資料的顧客('a99')
+  group_by(age) %>% summarise(
+  Group.Size = n(),              # 族群人數
+  avg.Freq = mean(f),            # 平均購買次數
+  avg.Revenue = sum(f*m)/sum(f)  # 平均客單價
+  ) %>% 
+  ggplot(aes(y=avg.Freq, x=avg.Revenue)) +
+  geom_point(aes(col=age, size=Group.Size), alpha=0.5) +
+  geom_text(aes(label=age)) +
+  scale_size(range=c(5,25)) +
+  theme_bw() + theme(legend.position="none") +
+  ggtitle("年齡區隔特徵 (泡泡大小:族群人數)") + 
+  ylab("平均購買次數") + xlab("平均客單價")
+```
+
+
+##### 地理區隔特徵
+```{r}
+A0 %>% filter(age!="a99") %>%    # 濾掉沒有年齡資料的顧客('a99')
+  group_by(area) %>% summarise(
+  Group.Size = n(),              # 族群人數
+  avg.Freq = mean(f),            # 平均購買次數
+  avg.Revenue = sum(f*m)/sum(f)  # 平均客單價
+  ) %>% 
+  ggplot(aes(y=avg.Freq, x=avg.Revenue)) +
+  geom_point(aes(col=area, size=Group.Size), alpha=0.5) +
+  geom_text(aes(label=area)) +
+  scale_size(range=c(5,25)) +
+  theme_bw() + theme(legend.position="none") +
+  ggtitle("地理區隔特徵 (泡泡大小:族群人數)") + 
+  ylab("平均購買次數") + xlab("平均客單價")
+```
+
+情境推測：
+<br>
+1. 假設Ta Feng為位於南港區的購物中心內的量販店<br>
+2. 住較近學生及上班族群下班下課後的聚會地點<br>
+3. 因地緣關係，信義區跟內湖區等顧客可能只在假日特地來購物商城逛街補貨，因此單次購買量較高<br>
+4. 30~50歲平均購買單價較其他年齡層高，推測經濟能力較好<br>
+
+
+### 產品銷售狀況
+```{r}
+prodA = Z0 %>% group_by(prod) %>% summarise(
+  totalQty = sum(qty),
+  totalRev = sum(price),
+  totalGross = sum(price) - sum(cost),
+  grossMargin = totalGross/totalRev,
+  avgPrice = totalRev/totalQty
+  )
+prodA
+```
+
+```{r}
+prod1 = Z0 %>% group_by(prod) %>% summarise(
+  noProd = n_distinct(prod),
+  totalQty = sum(qty),
+  totalRev = sum(price),
+  totalGross = sum(price) - sum(cost),
+  grossMargin = totalGross/totalRev,
+  avgPrice = totalRev/totalQty
+  )
+prod1 <- prod1 %>% arrange(desc(totalQty,avgPrice)) %>% head(10)
+ggplot(prod1, aes(x = avgPrice, y = totalQty))+geom_point(aes(col = totalGross,size = totalRev))+scale_color_gradientn(colors=c("seagreen","gold","red"))+geom_text_repel(aes(avgPrice, totalQty, label = prod))
+```
+
+
+##### top2000產品金額與營收
+```{r}
+top2000 = prodA %>% top_n(2000, totalRev)
+g1=ggplot(top2000, aes(x=totalRev, y=avgPrice, col=prod)) +
+  geom_point()
+ggplotly(g1)
+```
+我們發現商品平均售價不高，同時我們也可以發現最暢銷的產品不一定會賺錢，因此大豐超市需要推廣更多毛利較高的產品，才能創造更好的營收。<br>
+
+
+##### 產品資訊
+```{r}
+cats = Z0 %>% group_by(cat) %>% summarise(
+  noProd = n_distinct(prod),
+  totalQty = sum(qty),
+  totalRev = sum(price),
+  totalGross = sum(price) - sum(cost),
+  grossMargin = totalGross/totalRev,
+  avgPrice = totalRev/totalQty
+  )
+```
+
+```{r}
+#商品探索圖
+top_cat <- cats %>% arrange(desc(totalGross)) %>% head(10)
+top_cat$cat <- as.factor(top_cat$cat)
+ggplot(top_cat, aes(x=cat, y=avgPrice, fill=cat))+geom_col()
+```
+
+```{r}
+test2 <- Z0 %>% filter(age %in% c("a34","a39","a44","a49"))
+test3 <- test2 %>%
+  group_by(prod) %>%
+  summarise(prod_qty = sum(qty)) %>%
+  arrange(desc(prod_qty)) 
+test4 <-merge(test2,test3)
+```
+
+##### 購買次數前10品項在30-50歲的購買狀況
+```{r}
+t1 <-test3 %>% head(10)
+t2 <- merge(test2,t1)
+t2$cat <- as.factor(t2$cat)
+ggplot(t2, aes(x=age, y=qty, fill=cat)) + geom_col()
+```
+
+##### 總毛利最好的前50項品項
+```{r}
+# 對品類(`category`)做彙總 
+cattest = Z0 %>%                        
+  group_by(cat) %>% #根據每個品項每月會有一個值
+  summarise(                           
+    totalQty = sum(qty),
+    totalRev = sum(price),
+    totalGross = sum(price) - sum(cost),
+    grossMargin = totalGross/totalRev,
+    avgPrice = totalRev/totalQty
+  ) %>% 
+  arrange(cat)            
+cattest2 = cattest %>% as.data.frame
+cattest2 = cattest2 %>% arrange(desc(totalGross)) %>% head(50)
+```
+
+```{r}
+cattest2$cat <- as.factor(cattest2$cat)
+a=qplot(x = avgPrice,
+        y = totalGross ,
+        data= cattest2,
+        color = cat,
+        size = totalGross)
+options(scipen=999)#不要科學記號
+ggplotly(a)
+```
+320402為單價高但毛利最好的產品<br>
+
+##### 營收貢獻(`rev`)最大的100個品類與平均價格
+```{r}
+col6 = c('seagreen','gold','orange',rep('red',3))
+gg2= group_by(Z0, cat) %>% summarise(
+  solds = n(), qty = sum(qty), rev = sum(price), cost = sum(cost), 
+  profit = rev - cost, margin = 100*profit/rev , avg_price = rev/qty
+  ) %>% 
+  top_n(100, profit) %>% 
+  ggplot(aes(x=margin, y=rev, col=profit, label=cat, label2=avg_price)) + 
+  geom_point(size=2,alpha=0.8) + scale_y_log10() + 
+  scale_color_gradientn(colors=col6) +
+  theme_bw()
+ggplotly(gg2)
+```
+探查此區高毛利率但營收不高的前五名品類
+#501002,501001,500903,500705,560336
+
+##### 以下為cat5，毛利率前幾名相關資訊
+```{r}
+catA1 = subset(Z0, cat=="501001") #篩選出501001品類資料
+catA2 = catA1 %>% group_by(tid) %>% summarise(
+  date = date[1],             # 交易日期  
+  cust = cust[1],             # 顧客 ID
+  age = age[1],               # 顧客 年齡級別
+  area = area[1],             # 顧客 居住區別
+  items = n(),                # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost)   # 毛利
+  ) %>% data.frame            
+nrow(catA2)   
+```
+
+```{r}
+sapply(catA2[,6:9], quantile, prob=c(.999, .9995, .9999)) #處理離群值
+catA2 = subset(catA2, items<=4 & pieces<19.889 & total<1897.9,gross<586.78) 
+```
+
+
+```{r}
+par(cex=0.8)
+hist(catA2$date, "weeks", freq=T, las=2, main="cat501001 per Week")
+```
+
+```{r}
+X0$wday = format(X0$date, "%u")  #cat501001購買年齡層與週間
+catA3 <- merge(catA2,X0)
+catA31 <- count(catA3, age, wday)
+catA4<- merge(catA31,catA3)
+
+A4=ggplot(catA4, aes(catA4$wday,catA4$age)) + 
+    geom_tile(aes(fill = n),colour = "white")+
+    scale_fill_gradient2(midpoint = 1, mid = "lightblue", limits = c(-10,10 ))+ theme_bw()
+A4
+```
+cat501001在週六的購買情況較好
+
+```{r}
+catB1 = subset(Z0, cat=="501002") #篩選出501002品類資料
+catB2 = catB1 %>% group_by(tid) %>% summarise(
+  date = date[1],             # 交易日期  
+  cust = cust[1],             # 顧客 ID
+  age = age[1],               # 顧客 年齡級別
+  area = area[1],             # 顧客 居住區別
+  items = n(),                # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost)   # 毛利
+  ) %>% data.frame            
+nrow(catB2)   
+```
+
+```{r}
+sapply(catB2[,6:9], quantile, prob=c(.999, .9995, .9999)) #處理離群值
+catB2 = subset(catB2, items<=3 & pieces<6 & total<893.16,gross<283.35) 
+```
+
+```{r}
+par(cex=0.8)
+hist(catB2$date, "weeks", freq=T, las=2, main="cat501002 per Week")
+```
+
+```{r}
+X0$wday = format(X0$date, "%u")  #cat501002購買年齡層與週間
+catB3 <- merge(catB2,X0)
+catB31 <- count(catB3, age, wday)
+catB4<- merge(catB31,catB3)
+
+B4=ggplot(catB4, aes(catB4$wday,catB4$age)) + 
+    geom_tile(aes(fill = n),colour = "white")+
+    scale_fill_gradient2(midpoint = 1, mid = "lightblue", limits = c(0,5 ))+ theme_bw()
+B4
+
+```
+cat501002在週一及週三的購買情況較好
+
+```{r}
+catC1 = subset(Z0, cat=="500903") #篩選出500903品類資料
+catC2 = catC1 %>% group_by(tid) %>% summarise(
+  date = date[1],             # 交易日期  
+  cust = cust[1],             # 顧客 ID
+  age = age[1],               # 顧客 年齡級別
+  area = area[1],             # 顧客 居住區別
+  items = n(),                # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost)   # 毛利
+  ) %>% data.frame            
+nrow(catC2)   
+```
+
+```{r}
+sapply(catC2[,6:9], quantile, prob=c(.999, .9995, .9999)) #處理離群值
+catC2 = subset(catC2, items<=3.8977 & pieces<=22.363 & total<3404.4,gross<1046.47) 
+```
+
+```{r}
+par(cex=0.8)
+hist(catC2$date, "weeks", freq=T, las=2, main="cat500903 per Week")
+```
+
+```{r}
+X0$wday = format(X0$date, "%u")  #cat500903購買年齡層與週間
+catC3 <- merge(catC2,X0)
+catC31 <- count(catC3, age, wday)
+catC4<- merge(catC31,catC3)
+
+C4=ggplot(catC4, aes(catC4$wday,catC4$age)) + 
+    geom_tile(aes(fill = n),colour = "white")+
+    scale_fill_gradient2(midpoint = 1, mid = "lightblue", limits = c(0,5 ))+ theme_bw()
+C4
+```
+
+```{r}
+catD1 = subset(Z0, cat=="500705") #篩選出500705品類資料
+catD2 = catD1 %>% group_by(tid) %>% summarise(
+  date = date[1],             # 交易日期  
+  cust = cust[1],             # 顧客 ID
+  age = age[1],               # 顧客 年齡級別
+  area = area[1],             # 顧客 居住區別
+  items = n(),                # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost)   # 毛利
+  ) %>% data.frame            
+nrow(catD2)   
+```
+
+```{r}
+sapply(catD2[,6:9], quantile, prob=c(.999, .9995, .9999)) #處理離群值
+catD2 = subset(catD2, items<=5.9476 & pieces<=38.95 & total<6253.7,gross<1704.4) 
+```
+
+```{r}
+par(cex=0.8)
+hist(catD2$date, "weeks", freq=T, las=2, main="cat500705 per Week")
+
+```
+
+```{r}
+X0$wday = format(X0$date, "%u")  #cat500705購買年齡層與週間
+catD3 <- merge(catD2,X0)
+catD31 <- count(catD3, age, wday)
+catD4<- merge(catD31,catD3)
+
+D4=ggplot(catD4, aes(catD4$wday,catD4$age)) + 
+    geom_tile(aes(fill = n),colour = "white")+
+    scale_fill_gradient2(midpoint = 1, mid = "lightblue", limits = c(0,5 ))+ theme_bw()
+D4
+```
+
+```{r}
+catE1 = subset(Z0, cat=="560336") #篩選出560336品類資料
+catE2 = catE1 %>% group_by(tid) %>% summarise(
+  date = date[1],             # 交易日期  
+  cust = cust[1],             # 顧客 ID
+  age = age[1],               # 顧客 年齡級別
+  area = area[1],             # 顧客 居住區別
+  items = n(),                # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost)   # 毛利
+  ) %>% data.frame            
+nrow(catE2)   
+```
+
+```{r}
+sapply(catE2[,6:9], quantile, prob=c(.999, .9995, .9999)) #處理離群值
+catE2 = subset(catE2, items<=3.88 & pieces<=7.77 & total<1010.08,gross<240.34) 
+```
+```{r}
+par(cex=0.8)
+hist(catE2$date, "weeks", freq=T, las=2, main="cat560336 per Week")
+```
+
+```{r}
+X0$wday = format(X0$date, "%u")  #cat560336購買年齡層與週間
+catE3 <- merge(catE2,X0)
+catE31 <- count(catE3, age, wday)
+catE4<- merge(catE31,catE3)
+
+E4=ggplot(catE4, aes(catE4$wday,catE4$age)) + 
+    geom_tile(aes(fill = n),colour = "white")+
+    scale_fill_gradient2(midpoint = 1, mid = "lightblue", limits = c(0,5 ))+ theme_bw()
+E4
+```
+
+### 購物籃分析
+```{r}
+pacman::p_load(Matrix, arules, arulesViz)
+```
+
+```{r}
+Z0$tid %>% n_distinct
+```
+
+```{r}
+Z0$cat %>% n_distinct
+```
+
+```{r}
+p = count(Z0, cat, sort=T)
+```
+
+```{r}
+pk = p$cat[1:2007]
+Z = filter(Z0, cat %in% pk)
+tr = as(split(Z[,"cat"], Z[,"tid"]), "transactions"); tr
+rules <- apriori(tr, parameter=list(supp=0.00005, conf=0.5))
+summary(rules)
+```
+我們運用購物籃分析法，尋找消費者<br>
+```{r}
+cat5 <- c("501002","500705","560336","501001","500903")
+rx = subset(rules, subset = lift > 5 & count > 7  & rhs %in% cat5) 
+inspect(rx)
+```
+
+我們希望提高毛利率高但銷售量少的商品的購買率，<br>
+因此藉由購物籃的分析法尋找商品間的關聯性，<br>
+我們發現購買#560201可以提高#560336的購買率，<br>
+而購買#501002可以提高#5601001的購買率，於是可以用在我們的行銷策略上。<br>
+
+
+
+
+
+
+
