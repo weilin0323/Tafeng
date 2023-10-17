@@ -1,0 +1,170 @@
+---
+title: "G10 行銷模擬工具"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: default
+    css: ../style.css
+    source_code: embed 
+runtime: shiny
+---
+LoyalDog
+=================================================================
+
+```{r}
+options(shiny.usecairo = FALSE)
+pacman::p_load(dplyr,ggplot2,plotly,shinyWidgets,shinythemes)
+load("data/tf4.rdata")
+```
+
+Column A1 {.sidebar data-width=240}
+-------------------------------------
+```{r}
+str = ".js-irs-%d .irs-single, .js-irs-%d .irs-bar-edge, .js-irs-%d .irs-bar {background: %s}"
+sliderColors = function(i, col) tags$style(HTML(sprintf(str,i,i,i,col)))
+sliderColors(0,'magenta'); sliderColors(1,'magenta'); sliderColors(2,'magenta')
+sliderColors(3,'darkcyan'); sliderColors(4,'darkcyan'); sliderColors(5,'darkcyan')
+chooseSliderSkin("Modern")
+div(style="height: 90px;", sliderInput("m1","m1",0.08,0.25,0.2,0.01) )
+div(style="height: 90px;", sliderInput("b1","b1",10,50,25,5) )
+div(style="height: 90px;", sliderInput("a1","a1",10,100,40,5) )
+hr()
+div(style="height: 90px;", sliderInput("m2","m2",0.08,0.25,0.15,0.01))
+div(style="height: 90px;", sliderInput("b2","b2",10,50,15,5))
+div(style="height: 90px;", sliderInput("a2","a2",10,100,30,5))
+
+rMargin = 0.14
+X = seq(2,100,1)
+LoyalDogSimu = function(name, m, b, a) {
+  LoyalDogdf = tibble(inst=name, cost=X,
+              LoyalDogeff = m * plogis((10/a)*(X-b)))
+  LoyalDogdf2 = sapply(1:nrow(LoyalDogdf), function(i) {
+    LoyalDogeR = pmin(1-LoyalDogB$Buy, LoyalDogdf$LoyalDogeff[i])*LoyalDogB$Rev*rMargin - LoyalDogdf$cost[i] 
+    c(LoyalDogeReturn=sum(LoyalDogeR), N=sum(LoyalDogeR > 0), LoyalDogeReturn2=sum(LoyalDogeR[LoyalDogeR > 0]))
+  }) %>% t
+  cbind(LoyalDogdf, LoyalDogdf2) }
+LoyalDogDF1 = reactive({ LoyalDogSimu("I1", input$m1, input$b1, input$a1) })
+LoyalDogDF2 = reactive({ LoyalDogSimu("I3", input$m2, input$b2, input$a2) })
+LoyalDogDF = reactive({ rbind(LoyalDogDF1(), LoyalDogDF2()) })
+```
+
+ColumnA1 {}
+-------------------------------------
+### 成本效益函數
+```{r}
+renderPlot({
+LoyalDogDF() %>%
+  ggplot(aes(x=cost, y=LoyalDogeff, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("Prob. Function: f(x|m,b,a)") + ylim(c(0,0.20))
+})
+```
+
+### 目標人數
+```{r}
+renderPlot({
+LoyalDogDF() %>% ggplot(aes(x=cost, y=N, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("No. Customer Selected") + ylim(c(0,10000))
+})
+```
+
+ColumnA1 {}
+-------------------------------------
+### 模擬結果(全選)
+```{r}
+renderPlot({
+LoyalDogDF() %>% ggplot(aes(x=cost, y=LoyalDogeReturn, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("Expected Return, All") + ylim(c(-1000000,500000))
+})
+```
+
+### 模擬結果(針對目標)
+```{r}
+renderPlot({
+LoyalDogDF() %>% ggplot(aes(x=cost, y=LoyalDogeReturn2, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("Expected Return, Selected") +  ylim(c(0,5000))
+})
+```
+
+Upstart
+=========================================================
+
+```{r}
+options(shiny.usecairo = FALSE)
+pacman::p_load(dplyr,ggplot2,plotly,shinyWidgets,shinythemes)
+load("data/tf4.rdata")
+```
+
+Column A1 {.sidebar data-width=240}
+-------------------------------------
+```{r}
+str = ".js-irs-%d .irs-single, .js-irs-%d .irs-bar-edge, .js-irs-%d .irs-bar {background: %s}"
+sliderColors = function(i, col) tags$style(HTML(sprintf(str,i,i,i,col)))
+sliderColors(6,'magenta'); sliderColors(7,'magenta'); sliderColors(8,'magenta')
+sliderColors(9,'darkcyan'); sliderColors(10,'darkcyan'); sliderColors(11,'darkcyan')
+chooseSliderSkin("Modern")
+div(style="height: 90px;", sliderInput("m1","m1",0.08,0.25,0.25,0.01) )
+div(style="height: 90px;", sliderInput("b1","b1",10,50,30,5) )
+div(style="height: 90px;", sliderInput("a1","a1",10,100,40,5) )
+hr()
+div(style="height: 90px;", sliderInput("m2","m2",0.08,0.25,0.25,0.01))
+div(style="height: 90px;", sliderInput("b2","b2",10,50,30,5))
+div(style="height: 90px;", sliderInput("a2","a2",10,100,60,5))
+
+rMargin1 = 0.17
+X = seq(2,100,1)
+UpstartSimu = function(name, m, b, a) {
+  Upstartdf = tibble(inst=name, cost=X,
+              Upstarteff = m * plogis((10/a)*(X-b)))
+  Upstartdf2 = sapply(1:nrow(Upstartdf), function(i) {
+    UpstarteR = pmin(1-UpstartB$Buy, Upstartdf$Upstarteff[i])*UpstartB$Rev*rMargin1 - Upstartdf$cost[i] 
+    c(UpstarteReturn=sum(UpstarteR), N=sum(UpstarteR > 0), UpstarteReturn2=sum(UpstarteR[UpstarteR > 0]))
+  }) %>% t
+  cbind(Upstartdf, Upstartdf2) }
+UpstartDF1 = reactive({ UpstartSimu("I2", input$m1, input$b1, input$a1) })
+UpstartDF2 = reactive({ UpstartSimu("I4", input$m2, input$b2, input$a2) })
+UpstartDF = reactive({ rbind(UpstartDF1(), UpstartDF2()) })
+```
+
+ColumnA1 {}
+-------------------------------------
+### 成本效益函數
+```{r}
+renderPlot({
+UpstartDF() %>%
+  ggplot(aes(x=cost, y=Upstarteff, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("Prob. Function: f(x|m,b,a)") + ylim(c(0,0.20))
+})
+```
+
+### 目標人數
+```{r}
+renderPlot({
+UpstartDF() %>% ggplot(aes(x=cost, y=N, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("No. Customer Selected") + ylim(c(0,10000))
+})
+```
+
+ColumnA1 {}
+-------------------------------------
+### 模擬結果(全選)
+```{r}
+renderPlot({
+UpstartDF() %>% ggplot(aes(x=cost, y=UpstarteReturn, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("Expected Return, All") + ylim(c(-1e6,1e6))
+})
+```
+
+### 模擬結果(針對目標)
+```{r}
+renderPlot({
+UpstartDF() %>% ggplot(aes(x=cost, y=UpstarteReturn2, col=inst)) +
+  geom_line(size=1.5,alpha=0.5) + theme_bw() +
+  ggtitle("Expected Return, Selected") +  ylim(c(0,1e6))
+})
+```

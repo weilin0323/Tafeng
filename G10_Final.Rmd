@@ -1,0 +1,606 @@
+---
+title: "TF_資料探索期末報告"
+author: "G10_Final"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: ../etc/style.css
+   
+---
+<br>
+```{r echo=T, message=F, cache=F, warning=F}
+rm(list=ls(all=TRUE))
+pacman::p_load(vcd, magrittr, readr, caTools, ggplot2, dplyr, plotly,tidyverse,ggrepel)
+load("data/tf0.rdata")
+load("data/tf3.rdata")
+load("data/tf4.rdata")
+load("data/tf5.rdata")
+```
+
+<center>
+![Fig-1:行銷流程](fig/final.jpg)
+</center>
+
+<hr>
+### 探索TF資料
+
+```{r}
+#了解資料數量(顧客數、商品數...)
+sapply(list(cust=A0,tid=X0,items=Z0), nrow)
+```
+
+```{r}
+#4個月內來店次數
+A0 <- A0 %>% group_by(cust) %>% mutate(Freq = sum(f)) 
+
+#讓分佈圖看起來更清楚
+A1 <- A0 %>% filter(Freq < 31) 
+```
+
+##### 總購買次數分佈圓餅圖
+```{r}
+A1$Freq <- as.factor(A1$Freq)
+pie <- ggplot(A1,
+  aes(x = factor(1), fill = Freq)) +
+  geom_bar(width = 1) #將資料用成百分比
+pie <- pie + coord_polar(theta = "y")
+pie <- pie + theme_void()#將數值去掉
+pie
+```
+<br>
+透過圓餅圖了解顧客這四個月到店的消費次數，發現超過一半的人只來1.2次而已<br>
+
+##### 分群
+```{r}
+m = A0$m > 993; f = A0$f >= 3; a = A0$area %in% c("z115","z221") 
+Status2 = case_when(
+  m & f  ~  "A",   #購買金額高次數高
+  !m & !f ~ "D",   #購買金額低次數低
+  !m & f & !a ~ "E",   #購買金額低次數高不住附近
+  !m & f & a ~ "F",    #購買金額低次數高住附近
+  m & !f & !a ~ "B",  #購買金額高次數低不住附近
+  m & !f & a ~ "C"   #購買金額高次數低住附近
+  )
+
+Status3 = case_when(
+    m & !f  ~  "a1",   #潛力暴發戶
+  !m & f ~ "a2")   #忠心小犬
+
+table(Status2)
+table(Status3)
+
+```
+
+```{r}
+#把分群納入資料框中
+A0<-cbind(A0,Status2)
+names(A0)[11] <- "status"
+#將資料合併
+B0 = X0[,c("cust","date")]
+AB <- left_join(A0,B0)
+```
+
+##### 分群分佈圖
+```{r}
+#把日期轉換成月份
+AB$month <- format(as.Date(AB$date),format="%Y%m")
+g2 = ggplot(AB,aes(x = month, fill = status)) +
+     geom_bar()
+ggplotly(g2)
+```
+
+
+```{r}
+#把A與Z合併
+AZ <- left_join(A0,Z0)
+```
+
+##### 各分群平均購買次數、客單價分布
+```{r}
+CustSegments = AB %>%
+  group_by(month,status) %>% summarise(
+    average_frequency = mean(f),
+    average_amount = mean(m),
+    total_revenue = sum(rev),
+    total_no_orders = sum(Freq),
+    average_recency = mean(r),
+    average_seniority = mean(s),
+    group_size = n())
+
+df = CustSegments %>% transmute(
+  `群組` = as.character(status), 
+  `month` = month, 
+  `平均購買次數` = average_frequency, 
+  `平均客單價` = average_amount,
+  `總營收貢獻` = total_revenue
+  )
+```
+
+```{r}
+ggplot(df, aes(
+    x=`平均購買次數`,y=`平均客單價`,color=`群組`,group=`群組`,ids=month)) +
+  geom_point(aes(size=`總營收貢獻`),alpha=0.8) +
+  scale_size(range=c(2,12)) -> g
+ggplotly(g)
+```
+<br>
+透些資料探索我們可以發現一些趨勢和需改善的問題，<br>
+我們在分群後，將主要行銷對象設定為忠心小犬（E&F）及潛力暴發戶（B&C），<br>
+提高此2群顧客的消費頻率及平均客單價，為大豐創造更多利潤<br>
+
+### TF資料切割
+```{r}
+feb01 = as.Date("2001-02-01")
+Z = subset(Z0, date < feb01)    # 618212
+```
+
+##### 交易記錄彙總
+```{r}
+#依據分析對象彙整資料
+X = group_by(Z, tid) %>% summarise(
+  date = first(date),  # 交易日期
+  cust = first(cust),  # 顧客 ID
+  age = first(age),    # 顧客 年齡級別
+  area = first(area),  # 顧客 居住區別
+  items = n(),                # 交易項目(總)數
+  pieces = sum(qty),          # 產品(總)件數
+  total = sum(price),         # 交易(總)金額
+  gross = sum(price - cost)   # 毛利
+  ) %>% data.frame  # 88387
+```
+
+##### 處理異常值
+```{r}
+sapply(X[,6:9], quantile, prob=c(.999, .9995, .9999))
+X = subset(X, items<=64 & pieces<=98 & total<=11260) # 88387 -> 88295
+```
+
+##### 顧客資料彙總
+```{r}
+d0 = max(X$date) + 1
+A = X %>% mutate(
+  days = as.integer(difftime(d0, date, units="days"))
+  ) %>% 
+  group_by(cust) %>% summarise(
+    r = min(days),      # recency
+    s = max(days),      # seniority
+    f = n(),            # frquency
+    m = mean(total),    # monetary
+    rev = sum(total),   # total revenue contribution
+    raw = sum(gross),   # total gross profit contribution
+    age = age[1],       # age group
+    area = area[1],     # area code
+  ) %>% data.frame      # 28584
+nrow(A)
+```
+
+##### 照顧客彙總2月交易
+```{r}
+feb = filter(X0, date>= feb01) %>% group_by(cust) %>% 
+  summarise(amount = sum(total))  # 16900
+```
+
+##### The Target for Regression - `A$amount`
+```{r}
+A = merge(A, feb, by="cust", all.x=T)
+```
+
+##### The Target for Classification - `A$buy`
+```{r}
+A$buy = !is.na(A$amount)
+table(A$buy, !is.na(A$amount))
+```
+
+```{r}
+summary(A)
+```
+
+##### 依客群分資料集
+```{r}
+LoyalDog <-A %>% filter(m<993 & f>=3) #購買金額低 購買次數多 忠心小犬
+Upstart <-A %>% filter(m>993 & f<3) #購買金額高 購買次數低 潛力暴發戶
+```
+
+##### Train & Test Dataset-忠心小犬LoyalDog
+```{r}
+LoyalDogX = subset(X, cust %in% LoyalDog$cust & date < as.Date("2001-02-01"))
+LoyalDogZ = subset(Z, cust %in% LoyalDog$cust & date < as.Date("2001-02-01"))
+set.seed(2018); LoyalDogspl = sample.split(LoyalDog$buy, SplitRatio=0.7)#sample.split回傳分割向量 得出train跟test
+c(nrow(LoyalDog), sum(LoyalDogspl), sum(!LoyalDogspl))
+```
+
+```{r fig.height=3, fig.width=7}
+cbind(LoyalDog, LoyalDogspl) %>% filter(buy) %>% 
+  ggplot(aes(x=log(amount))) + geom_density(aes(fill=LoyalDogspl), alpha=0.5)
+```
+<br>
+檢查忠心小犬在購買機率的分佈情形，從圖型可看出兩者間存在些許差異<br>
+
+```{r}
+LoyalDog2 = subset(LoyalDog, buy) %>% mutate_at(c("m","rev","amount"), log10)
+n = nrow(LoyalDog2)
+set.seed(2018); LoyalDogspl2 = 1:n %in% sample(1:n, round(0.7*n))
+c(nrow(LoyalDog2), sum(LoyalDogspl2), sum(!LoyalDogspl2))
+```
+
+```{r fig.height=3, fig.width=7}
+cbind(LoyalDog2, LoyalDogspl2) %>% 
+  ggplot(aes(x=amount)) + geom_density(aes(fill=LoyalDogspl2), alpha=0.5)
+```
+<br>
+檢查忠心小犬在購買機率的分佈情形，從圖型可看出兩者間存在些許差異<br>
+
+##### Train & Test Dataset-潛力暴發戶Upstart
+```{r}
+UpstartX = subset(X, cust %in% Upstart$cust & date < as.Date("2001-02-01"))
+UpstartZ = subset(Z, cust %in% Upstart$cust & date < as.Date("2001-02-01"))
+set.seed(2018); Upstartspl = sample.split(Upstart$buy, SplitRatio=0.7)
+#sample.split回傳分割向量 得出train跟test
+c(nrow(Upstart), sum(Upstartspl), sum(!Upstartspl))
+```
+
+```{r fig.height=3, fig.width=7}
+cbind(Upstart, Upstartspl) %>% filter(buy) %>% 
+  ggplot(aes(x=log(amount))) + geom_density(aes(fill=Upstartspl), alpha=0.5)
+```
+<br>
+檢查潛在暴發戶在購買機率的分佈情形，從圖型可看出兩者間存在些許差異<br>
+```{r}
+Upstart2 = subset(Upstart, buy) %>% mutate_at(c("m","rev","amount"), log10)
+n = nrow(Upstart2)
+set.seed(2018); Upstartspl2 = 1:n %in% sample(1:n, round(0.7*n))
+c(nrow(Upstart2), sum(Upstartspl2), sum(!Upstartspl2))
+```
+
+```{r fig.height=3, fig.width=7}
+cbind(Upstart2, Upstartspl2) %>% 
+  ggplot(aes(x=amount)) + geom_density(aes(fill=Upstartspl2), alpha=0.5)
+```
+<br>
+檢查潛在暴發戶在購買機率的分佈情形，從圖型可看出兩者間存在些許差異<br>
+
+### TF建立模型
+
+##### Spliting for Classification-忠心小犬
+```{r}
+LoyalDogTR = subset(LoyalDog, LoyalDogspl)
+LoyalDogTS = subset(LoyalDog, !LoyalDogspl)
+```
+
+##### Classification Model-忠心小犬
+```{r}
+LoyalDogglm1 = glm(buy ~ ., LoyalDogTR[,c(2:9, 11)], family=binomial()) 
+summary(LoyalDogglm1)
+```
+
+```{r}
+LoyalDogpred =  predict(LoyalDogglm1, LoyalDogTS, type="response")
+LoyalDogcm = table(actual = LoyalDogTS$buy, predict = LoyalDogpred > 0.5); LoyalDogcm
+```
+
+```{r}
+LoyalDogacc.ts = LoyalDogcm %>% {sum(diag(.))/sum(.)}
+c(1-mean(LoyalDogTS$buy) , LoyalDogacc.ts)  
+```
+<br>
+用模型後，正確率從0.26提升到0.73<br>
+
+```{r}
+colAUC(LoyalDogpred, LoyalDogTS$buy)        # 0.6940807
+```
+<br><hr>
+
+##### Regression Model-忠心小犬
+```{r}
+LoyalDog2 = subset(LoyalDog, LoyalDog$buy) %>% mutate_at(c("m","rev","amount"), log10)
+LoyalDogTR2 = subset(LoyalDog2, LoyalDogspl2)
+LoyalDogTS2 = subset(LoyalDog2, !LoyalDogspl2)
+```
+
+```{r}
+LoyalDoglm1 = lm(amount ~ ., LoyalDogTR2[,c(2:6,8:10)])
+summary(LoyalDoglm1)
+```
+
+```{r}
+LoyalDogr2.tr = summary(LoyalDoglm1)$r.sq
+LoyalDogSST = sum((LoyalDogTS2$amount - mean(LoyalDogTR2$amount))^ 2)
+LoyalDogSSE = sum((predict(LoyalDoglm1, LoyalDogTS2) -  LoyalDogTS2$amount)^2)
+LoyalDogr2.ts = 1 - (LoyalDogSSE/LoyalDogSST)
+c(LoyalDogR2train=LoyalDogr2.tr, LoyalDogR2test=LoyalDogr2.ts)
+```
+
+##### Spliting for Classification-潛力暴發戶
+```{r}
+UpstartTR = subset(Upstart, Upstartspl)
+UpstartTS = subset(Upstart, !Upstartspl)
+```
+
+##### Classification Model-潛力暴發戶
+```{r}
+Upstartglm1 = glm(buy ~ ., UpstartTR[,c(2:9, 11)], family=binomial()) 
+summary(Upstartglm1)
+```
+
+```{r}
+Upstartpred =  predict(Upstartglm1, UpstartTS, type="response")
+Upstartcm = table(actual = UpstartTS$buy, predict = Upstartpred > 0.5); Upstartcm
+```
+
+```{r}
+Upstartacc.ts = Upstartcm %>% {sum(diag(.))/sum(.)}
+c(1-mean(UpstartTS$buy) , Upstartacc.ts)  # 用模型後的正確率
+```
+
+```{r}
+colAUC(Upstartpred, UpstartTS$buy)        # 0.6173465
+```
+
+##### Regression Model-潛力暴發戶
+```{r}
+Upstart2 = subset(Upstart, Upstart$buy) %>% mutate_at(c("m","rev","amount"), log10)
+UpstartTR2 = subset(Upstart2, Upstartspl2)
+UpstartTS2 = subset(Upstart2, !Upstartspl2)
+```
+
+```{r}
+Upstartlm1 = lm(amount ~ ., UpstartTR2[,c(2:5,8:10)])
+summary(Upstartlm1)
+```
+
+```{r}
+Upstartr2.tr = summary(Upstartlm1)$r.sq
+UpstartSST = sum((UpstartTS2$amount - mean(UpstartTR2$amount))^ 2)
+UpstartSSE = sum((predict(Upstartlm1, UpstartTS2) -  UpstartTS2$amount)^2)
+Upstartr2.ts = 1 - (UpstartSSE/UpstartSST)
+c(UpstartR2train=Upstartr2.tr, UpstartR2test=Upstartr2.ts)
+```
+
+### TF預測（購買機率與預期營收）
+
+資料日期為2000-12-01 ~ 2001~02-28 <br>
+
+##### 忠心小犬
+```{r}
+d0 = max(X0$date) + 1
+B = X0 %>% 
+  filter(date >= as.Date("2000-12-01")) %>% 
+  mutate(days = as.integer(difftime(d0, date, units="days"))) %>% 
+  group_by(cust) %>% summarise(
+    r = min(days),      # recency
+    s = max(days),      # seniority
+    f = n(),            # frquency
+    m = mean(total),    # monetary
+    rev = sum(total),   # total revenue contribution
+    raw = sum(gross),   # total gross profit contribution
+    age = age[1],       # age group
+    area = area[1],     # area code
+  ) %>% data.frame      # 28584
+
+LoyalDogB <-B %>% filter(m<993 & f>=3) #購買金額低 購買次數多 忠心小犬
+```
+
+```{r}
+LoyalDogB$Buy = predict(LoyalDogglm1, LoyalDogB, type="response")
+```
+
+```{r}
+LoyalDogB2 = LoyalDogB %>% mutate_at(c("m","rev"), log10)
+LoyalDogB$Rev = 10^predict(LoyalDoglm1, LoyalDogB2)
+```
+對忠心小犬客群的預測購買金額做指數、對數轉換<br>
+
+```{r fig.height=2.4, fig.width=7.2}
+par(mfrow=c(1,2), cex=0.8)
+hist(LoyalDogB$Buy)
+hist(log(LoyalDogB$Rev,10))
+```
+<br>
+從上圖可發現，忠心小犬的購買機率落在0.7～0.9之間（該族群的購買機率確實偏高）<br>
+而在預期營收方面，呈現常態分佈，預期營收平均約落在899左右<br>
+
+##### 潛力暴發戶
+```{r}
+UpstartB <-B %>% filter(m>993 & f<3) #購買金額高 購買次數低 潛力暴發戶
+UpstartB$Buy = predict(Upstartglm1, UpstartB, type="response")
+```
+
+```{r}
+UpstartB2 = UpstartB %>% mutate_at(c("m","rev"), log10)
+UpstartB$Rev = 10^predict(Upstartlm1, UpstartB2)
+```
+對忠心小犬客群的預測購買金額做指數、對數轉換<br>
+
+```{r fig.height=2.4, fig.width=7.2}
+par(mfrow=c(1,2), cex=0.8)
+hist(UpstartB$Buy)
+hist(log(UpstartB$Rev,10))
+```
+<br>
+從上圖可發現，潛力潛力暴發戶的購買機率較為分散，與忠心小犬相比其購買機率明顯較低<br>
+而在預期營收方面，呈現常態分佈，預期營收平均約落在1252左右<br>
+
+### 市場模擬
+<br>
+接著我們要做出具體的行銷方向，再透過假設進行市場模擬，<br>
+了解出這些行銷方案在忠心小犬與潛力暴發戶上到底有沒有效<br>
+
+##### 成本效益函數
+```{r}
+DP = function(x,m0,b0,a0) {m0*plogis((10/a0)*(x-b0))}
+```
+
+##### 估計毛利率(`margin`)
+```{r}
+marLoyalDog = sum(LoyalDogB$raw)/sum(LoyalDogB$rev)
+marUpstart = sum(UpstartB$raw)/sum(UpstartB$rev)
+```
+我們針對兩族群進行毛利率估計後，發現忠心小犬（loyaldog）為0.14；<br>
+潛力暴發戶（upstart）則為0.17<br>
+
+##### 估計預期報償-忠心小犬
+```{r fig.height=3}
+m=0.2; b=25; a=40; x=30
+LoyalDogdp = pmin(1-LoyalDogB$Buy, DP(x,m,b,a))
+LoyalDogeR = LoyalDogdp*LoyalDogB$Rev*marLoyalDog - x
+hist(LoyalDogeR,main="預期報償分佈",xlab="預期報償",ylab="顧客數")
+```
+<br>
+針對LoyalDog這個族群分析預期報償，發現約落在-30到10之間， <br>
+於是我們根據上圖所得的結果，針對預期報償大於0之顧客進行促銷 <br>
+
+##### 單一參數組合-忠心小犬
+```{r}
+m=0.2; b=25; a=40; X = seq(10,45,1)
+
+LoyalDogdf = sapply(X, function(x) {
+  LoyalDogdp = pmin(DP(x,m,b,a),1-LoyalDogB$Buy)
+  LoyalDogeR = LoyalDogdp*LoyalDogB$Rev*marLoyalDog - x
+  c(x=x, eReturn=sum(LoyalDogeR), N=sum(LoyalDogeR > 0), eReturn2=sum(LoyalDogeR[LoyalDogeR > 0]))
+  }) %>% t %>% data.frame 
+#eReturn對所有人行銷的總預期效益
+#n 預期收益大於0的人數
+#eReturn 只對收益大於0的人做行銷的總預期收益
+LoyalDogdf %>% gather('key','value',-x) %>% 
+  ggplot(aes(x=x, y=value, col=key)) + 
+  geom_hline(yintercept=0,linetype='dashed') +
+  geom_line(size=1.5,alpha=0.5) + 
+  facet_wrap(~key,ncol=1,scales='free_y') + theme_bw()
+```
+<br> 
+針對該族群的所有人進行行銷，結果會發現總體預期報償會呈現負數， <br> 
+然而在進行調整過後，發現針對預期報償大於0之顧客的總體預期報償則明顯提高 <br>
+
+##### 市場模擬：不同的參數組合的比較-忠心小犬
+```{r warning=F, fig.height=8, fig.width=8}
+mm=c(0.20, 0.25, 0.15, 0.25)
+bb=c(  25,   30,   15,   30)
+aa=c(  40,   40,   30,   60) 
+X = seq(10, 60, 1) 
+LoyalDogdf2 = do.call(rbind, lapply(1:length(mm), function(i) {
+  sapply(X, function(x) {
+    LoyalDogdp2 = pmin(1-LoyalDogB$Buy, DP(x,mm[i],bb[i],aa[i]))
+    LoyalDogeR2 = LoyalDogdp2*LoyalDogB$Rev*marLoyalDog - x
+    c(i=i, x=x, eR.ALL=sum(LoyalDogeR2), N=sum(LoyalDogeR2>0), eR.SEL=sum(LoyalDogeR2[LoyalDogeR2 > 0]) )
+    }) %>% t %>% data.frame
+  })) 
+
+LoyalDogdf2 %>% 
+  mutate_at(vars(eR.ALL, eR.SEL), function(y) round(y/1000)) %>% 
+  gather('key','value',-i,-x) %>% 
+  mutate(Instrument = paste0('I',i)) %>%
+  ggplot(aes(x=x, y=value, col=Instrument)) + 
+  geom_hline(yintercept=0, linetype='dashed', col='blue') +
+  geom_line(size=1.5,alpha=0.5) + 
+  xlab('工具選項(成本)') + ylab('預期報償(K)') + 
+  ggtitle('行銷工具優化','假設行銷工具的效果是其成本的函數') +
+    facet_wrap(~key,ncol=1,scales='free_y') + theme_bw() -> p
+
+plotly::ggplotly(p)
+```
+<br> 
+從圖中可發現行銷工具中，I3的預期報償表現顯著突出 <br>
+當工具成本20時，對所有人的預期效益會是-583310， <br>
+目標客群人數為791，然而僅針對部分顧客進行行銷時為2046 <br>
+
+##### 每一個工具的最佳參數-忠心小犬
+```{r}
+group_by(LoyalDogdf2, i) %>% top_n(1,eR.SEL)
+```
+從工具的最佳參數中，可看出I3的效果最好， <br>
+因此對Loyaldog這個族群，我們以I3作為行銷工具。 <br>
+
+##### 估計預期報償-潛力暴發戶
+```{r fig.height=3}
+m=0.2; b=25; a=40; x=30
+Upstartdp = pmin(1-UpstartB$Buy, DP(x,m,b,a))
+UpstarteR = Upstartdp*UpstartB$Rev*marUpstart - x
+hist(UpstarteR,main="預期報償分佈",xlab="預期報償",ylab="顧客數")
+```
+<br> 
+針對Upstart這個族群分析預期報償，發現約落在-20到80之間， <br>
+於是我們根據上圖所得的結果，針對預期報償大於0之顧客進行促銷 <br>
+
+##### 單一參數組合-潛力暴發戶
+```{r}
+m=0.2; b=25; a=40; X = seq(10,45,1)
+
+Upstartdf = sapply(X, function(x) {
+  Upstartdp = pmin(DP(x,m,b,a),1-UpstartB$Buy)
+  UpstarteR = Upstartdp*UpstartB$Rev*marUpstart - x
+  c(x=x, eReturn=sum(UpstarteR), N=sum(UpstarteR > 0), eReturn2=sum(UpstarteR[UpstarteR > 0]))
+  }) %>% t %>% data.frame 
+#eReturn對所有人行銷的總預期效益
+#n 預期收益大於0的人數
+#eReturn 只對收益大於0的人做行銷的總預期收益
+Upstartdf %>% gather('key','value',-x) %>% 
+  ggplot(aes(x=x, y=value, col=key)) + 
+  geom_hline(yintercept=0,linetype='dashed') +
+  geom_line(size=1.5,alpha=0.5) + 
+  facet_wrap(~key,ncol=1,scales='free_y') + theme_bw()
+```
+<br> 
+針對該族群的所有人進行行銷，結果會發現總體預期報償的區間大於忠心小犬的區間， <br> 
+然而在進行調整過後，發現針對預期報償大於0之顧客的總體預期報償則明顯提高 <br>
+
+##### 市場模擬：不同的參數組合的比較-潛力暴發戶
+```{r warning=F, fig.height=8, fig.width=8}
+X = seq(10, 60, 1) 
+Upstartdf2 = do.call(rbind, lapply(1:length(mm), function(i) {
+  sapply(X, function(x) {
+    Upstartdp2 = pmin(1-UpstartB$Buy, DP(x,mm[i],bb[i],aa[i]))
+    UpstarteR2 = Upstartdp2*UpstartB$Rev*marUpstart - x
+    c(i=i, x=x, eR.ALL=sum(UpstarteR2), N=sum(UpstarteR2>0), eR.SEL=sum(UpstarteR2[UpstarteR2 > 0]) )
+    }) %>% t %>% data.frame
+  })) 
+
+Upstartdf2 %>% 
+  mutate_at(vars(eR.ALL, eR.SEL), function(y) round(y/1000)) %>% 
+  gather('key','value',-i,-x) %>% 
+  mutate(Instrument = paste0('I',i)) %>%
+  ggplot(aes(x=x, y=value, col=Instrument)) + 
+  geom_hline(yintercept=0, linetype='dashed', col='blue') +
+  geom_line(size=1.5,alpha=0.5) + 
+  xlab('工具選項(成本)') + ylab('預期報償(K)') + 
+  ggtitle('行銷工具優化','假設行銷工具的效果是其成本的函數') +
+    facet_wrap(~key,ncol=1,scales='free_y') + theme_bw() -> p
+#er.all所有人都做
+#er.sel  er>0的人中 對他們做行銷的er
+#er.n er>0的人數
+
+plotly::ggplotly(p)
+```
+<br> 
+從圖中可發現行銷工具中，每個工具所對應的成本、預期報償皆不同，<br> 
+而其中I2的預期報償表現稍顯突出 <br>
+當工具成本40時，對所有人的預期效益會是62608， <br>
+目標客群人數為4376，然而僅針對部分顧客進行行銷時78269 <br>
+<br>
+另外，我們也可以透過行銷模擬工具來調整參數，<br>
+找出最適合的行銷工具（可參考G10_FinalSimulate.rmd）<br>
+<center>
+![Fig-2:行銷模擬工具](fig/Simulate.jpg)
+</center>
+
+##### 每一個工具的最佳參數-潛力暴發戶
+```{r}
+group_by(Upstartdf2, i) %>% top_n(1,eR.SEL)
+```
+<br> 
+從工具的最佳參數中，可看出I2的效果最好， <br>
+因此對upstart這個族群，我們以I2作為行銷工具 <br>
+
+```{r}
+save(LoyalDogZ, LoyalDogX, LoyalDog, LoyalDog2, LoyalDogspl, LoyalDogspl2,UpstartZ, UpstartX, Upstart, Upstart2, Upstartspl, Upstartspl2, file="data/tf3.rdata")
+```
+
+```{r}
+save(LoyalDogB, UpstartB, file='data/tf4.rdata')
+```
+
+```{r}
+save(AB, AZ, Status2, file="data/tf5.rdata")
+```
+
